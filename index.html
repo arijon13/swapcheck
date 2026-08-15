@@ -111,12 +111,12 @@
   <div id="out"></div>
 
   <footer>
-    <div>Non-custodial: swaps are built by <a href="https://dev.jup.ag/docs/swap-api" target="_blank" rel="noopener">Jupiter's Swap API</a> and signed in your own wallet. swapcheck holds no keys and no funds. A 0.20% platform fee is included in quotes when active. From the same family: <a href="https://arijon13.github.io/txplain/">txplain</a> explains any transaction in plain English, <a href="https://arijon13.github.io/mintcheck/">mintcheck</a> runs deeper token checks.</div>
+    <div>Non-custodial: swaps are built by <a href="https://dev.jup.ag/docs/swap-api" target="_blank" rel="noopener">Jupiter's Swap API</a> and signed in your own wallet. swapcheck holds no keys and no funds. A 0.20% platform fee (20 bps, paid in the output token) is added to a quote only when a fee account exists for that pair — the quote always shows it as a line item, and "none on this pair yet" means the swap runs feeless. From the same family: <a href="https://arijon13.github.io/txplain/">txplain</a> explains any transaction in plain English, <a href="https://arijon13.github.io/mintcheck/">mintcheck</a> is the standalone token check with holder concentration.</div>
     <div class="tip">Useful? Tip the wallet that built it: <code id="tipaddr">qjrAgD1QGyaZuRAz1RB9fFAdU5UPsMDbQGujcXCitr3</code> <button class="copy" id="copytip">copy</button></div>
   </footer>
 </div>
 
-<script src="https://unpkg.com/@solana/web3.js@1.95.3/lib/index.iife.min.js"></script>
+<script src="https://unpkg.com/@solana/web3.js@1.95.3/lib/index.iife.min.js" integrity="sha384-xo1g+ODR6i1cxIVZeALc/apXFHeaJHO1j1whMO3dhtdBChWeaihnDs7UnXs9ch78" crossorigin="anonymous"></script>
 <script>
 const RPC = "https://solana-rpc.publicnode.com";
 const RPC_FALLBACK = "https://api.mainnet-beta.solana.com";
@@ -133,6 +133,8 @@ const PRESETS = [
 const $ = (id) => document.getElementById(id);
 const short = (s, n = 4) => (s && s.length > 2 * n + 1 ? s.slice(0, n) + "…" + s.slice(-n) : s);
 const isMint = (s) => /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(s);
+// Escape anything that came from the chain / Jupiter / the wallet / an error before it goes into innerHTML.
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 let wallet = null;          // connected pubkey (string)
 let lastQuoteParams = null; // params used for the shown quote
 let lastQuote = null;       // quote response object
@@ -213,7 +215,7 @@ function fmtRaw(raw, decimals, maxFrac = 6) {
 
 function symFor(mint) {
   const p = PRESETS.find((t) => t.mint === mint);
-  return p ? p.sym : short(mint);
+  return p ? p.sym : esc(short(mint));
 }
 
 function renderFlags(mint, info) {
@@ -224,10 +226,10 @@ function renderFlags(mint, info) {
   let html = `<div class="flags">`;
   html += flag(canMint,
     canMint ? "Mint authority is ACTIVE — supply can grow" : "Mint authority revoked — supply is fixed",
-    canMint ? `The holder of <span class="mono">${short(info.mintAuthority)}</span> can print new tokens at any time, diluting you the moment you buy.` : "No one can create new tokens.");
+    canMint ? `The holder of <span class="mono">${esc(short(info.mintAuthority))}</span> can print new tokens at any time, diluting you the moment you buy.` : "No one can create new tokens.");
   html += flag(canFreeze,
     canFreeze ? "Freeze authority is ACTIVE — your tokens can be frozen" : "Freeze authority revoked — tokens can't be frozen",
-    canFreeze ? `The holder of <span class="mono">${short(info.freezeAuthority)}</span> can freeze your token account, blocking you from ever selling.` : "No one can freeze your tokens.");
+    canFreeze ? `The holder of <span class="mono">${esc(short(info.freezeAuthority))}</span> can freeze your token account, blocking you from ever selling.` : "No one can freeze your tokens.");
   html += `</div>`;
   if (ackRequired) {
     html += `<div class="gate"><label><input type="checkbox" id="ack" />
@@ -272,7 +274,7 @@ async function getQuote() {
       ? `<div class="k">Platform fee</div><div class="v fee">0.20% (${fmtRaw(q.platformFee.amount, oInfo.decimals)} ${symFor(outMint)})</div>`
       : `<div class="k">Platform fee</div><div class="v">none on this pair yet</div>`;
     const impact = parseFloat(q.priceImpactPct || "0");
-    const route = (q.routePlan || []).map((r) => r.swapInfo && r.swapInfo.label).filter(Boolean).join(" → ") || "direct";
+    const route = esc((q.routePlan || []).map((r) => r.swapInfo && r.swapInfo.label).filter(Boolean).join(" → ") || "direct");
 
     let html = `<div class="card quote">
       <div class="big">${fmtRaw(q.outAmount, oInfo.decimals)} <small>${symFor(outMint)}</small></div>
@@ -290,7 +292,7 @@ async function getQuote() {
     $("swapBtn").addEventListener("click", doSwap);
     updateSwapEnabled();
   } catch (e) {
-    out.innerHTML = `<div class="msg err">${e.message}</div>`;
+    out.innerHTML = `<div class="msg err">${esc(e.message || e)}</div>`;
   } finally {
     $("quoteBtn").disabled = false;
   }
@@ -338,7 +340,7 @@ async function doSwap() {
     msg.innerHTML = `<div class="msg">Waiting for your wallet — check the details there and approve if they match.</div>`;
     const { signature } = await provider().signAndSendTransaction(tx);
 
-    msg.innerHTML = `<div class="msg">Sent. Waiting for confirmation… <span class="mono">${short(signature, 8)}</span></div>`;
+    msg.innerHTML = `<div class="msg">Sent. Waiting for confirmation… <span class="mono">${esc(short(signature, 8))}</span></div>`;
     let status = null;
     for (let i = 0; i < 30; i++) {
       await new Promise((r) => setTimeout(r, 2000));
@@ -347,15 +349,15 @@ async function doSwap() {
       if (status && (status.confirmationStatus === "confirmed" || status.confirmationStatus === "finalized")) break;
     }
     if (status && !status.err) {
-      msg.innerHTML = `<div class="msg ok">Swap confirmed. <a href="https://solscan.io/tx/${signature}" target="_blank" rel="noopener">Solscan ↗</a> · <a href="https://arijon13.github.io/txplain/" target="_blank" rel="noopener">paste it into txplain to see what happened ↗</a></div>`;
+      msg.innerHTML = `<div class="msg ok">Swap confirmed. <a href="https://solscan.io/tx/${esc(signature)}" target="_blank" rel="noopener">Solscan ↗</a> · <a href="https://arijon13.github.io/txplain/" target="_blank" rel="noopener">paste it into txplain to see what happened ↗</a></div>`;
     } else if (status && status.err) {
-      msg.innerHTML = `<div class="msg err">Transaction landed but failed on-chain: <span class="mono">${JSON.stringify(status.err)}</span> — your funds only moved if the transaction succeeded. <a href="https://solscan.io/tx/${signature}" target="_blank" rel="noopener">Inspect on Solscan ↗</a></div>`;
+      msg.innerHTML = `<div class="msg err">Transaction landed but failed on-chain: <span class="mono">${esc(JSON.stringify(status.err))}</span> — your funds only moved if the transaction succeeded. <a href="https://solscan.io/tx/${esc(signature)}" target="_blank" rel="noopener">Inspect on Solscan ↗</a></div>`;
     } else {
-      msg.innerHTML = `<div class="msg">No confirmation yet — the network may be slow. <a href="https://solscan.io/tx/${signature}" target="_blank" rel="noopener">Track it on Solscan ↗</a></div>`;
+      msg.innerHTML = `<div class="msg">No confirmation yet — the network may be slow. <a href="https://solscan.io/tx/${esc(signature)}" target="_blank" rel="noopener">Track it on Solscan ↗</a></div>`;
     }
   } catch (e) {
     const m = (e && e.message) || String(e);
-    msg.innerHTML = `<div class="msg err">${/reject/i.test(m) ? "You declined the transaction in your wallet — nothing was sent." : m}</div>`;
+    msg.innerHTML = `<div class="msg err">${/reject/i.test(m) ? "You declined the transaction in your wallet — nothing was sent." : esc(m)}</div>`;
   } finally {
     if ($("swapBtn")) { $("swapBtn").disabled = false; updateSwapEnabled(); }
   }
