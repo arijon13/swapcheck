@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>swapcheck — the Solana swap that checks the token first</title>
+<meta name="description" content="Swap Solana tokens with Jupiter's best route — but see the rug-check first. Mint authority, freeze authority, warned before you sign. Non-custodial: your wallet, your keys." />
+<style>
+  :root {
+    --bg: #0b0d12; --panel: #12151d; --line: #222735; --ink: #e8ecf4;
+    --mut: #8b93a7; --faint: #5b6273; --acc: #14f195; --acc2: #9945ff;
+    --red: #ff6b6b; --amber: #ffbe5c;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+    font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 640px; margin: 0 auto; padding: 40px 20px 80px; }
+  header { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  h1 { font-size: 26px; margin: 0; letter-spacing: -0.02em; }
+  h1 b { color: var(--acc); font-weight: 800; }
+  .tag { color: var(--mut); font-size: 13px; }
+  .connect { margin-left: auto; }
+  p.lead { color: var(--mut); margin: 10px 0 26px; }
+  input, button, select { font: inherit; border-radius: 10px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); padding: 12px 14px; }
+  input:focus, select:focus { outline: none; border-color: var(--acc2); }
+  button { cursor: pointer; font-weight: 600; }
+  button.primary { background: var(--acc); color: #05271a; border-color: transparent; }
+  button:hover { filter: brightness(1.08); }
+  button:disabled { opacity: .45; cursor: default; filter: none; }
+  .card { border: 1px solid var(--line); border-radius: 14px; background: var(--panel); padding: 16px; margin-top: 14px; }
+  .card .lbl { font-size: 12px; color: var(--faint); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 8px; }
+  .trow { display: flex; gap: 10px; }
+  .trow select { min-width: 110px; }
+  .trow input.amt { flex: 1; min-width: 0; text-align: right; font-variant-numeric: tabular-nums; }
+  .trow input.mint { flex: 1; min-width: 0; font-family: ui-monospace, monospace; font-size: 13px; }
+  .mintrow { margin-top: 8px; display: none; }
+  .mintrow.show { display: flex; }
+  .actions { display: flex; gap: 10px; margin-top: 16px; align-items: center; }
+  .actions .grow { flex: 1; }
+  .slip { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--mut); }
+  .msg { margin-top: 16px; padding: 13px 16px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel); font-size: 14px; }
+  .msg.err { border-color: rgba(255,107,107,.5); color: #ffc9c9; }
+  .msg.ok { border-color: rgba(20,241,149,.5); }
+  .quote { margin-top: 14px; }
+  .kv { display: grid; grid-template-columns: 150px 1fr; gap: 5px 14px; font-size: 13.5px; }
+  .kv .k { color: var(--mut); } .kv .v { font-variant-numeric: tabular-nums; text-align: right; }
+  .kv .v.fee { color: var(--acc); }
+  .big { font-size: 22px; font-weight: 700; margin-bottom: 10px; }
+  .big small { font-size: 13px; color: var(--mut); font-weight: 400; }
+  .flags { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; }
+  .flag { display: flex; gap: 12px; align-items: flex-start; padding: 11px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
+  .flag .dot { width: 10px; height: 10px; border-radius: 50%; margin-top: 6px; flex-shrink: 0; }
+  .flag.ok .dot { background: var(--acc); box-shadow: 0 0 10px rgba(20,241,149,.5); }
+  .flag.risk .dot { background: var(--red); box-shadow: 0 0 10px rgba(255,80,80,.5); }
+  .flag .t { font-weight: 600; font-size: 14px; }
+  .flag .d { color: var(--mut); font-size: 13px; margin-top: 2px; }
+  .gate { margin-top: 12px; padding: 13px 16px; border: 1px solid rgba(255,190,92,.5); border-radius: 12px; background: rgba(255,190,92,.06); font-size: 14px; }
+  .gate label { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; }
+  .gate input { width: 18px; height: 18px; margin: 2px 0 0; padding: 0; accent-color: var(--amber); }
+  .swapline { margin-top: 16px; }
+  .swapline button { width: 100%; padding: 14px; font-size: 16px; }
+  a { color: var(--acc2); }
+  footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid var(--line); color: var(--mut); font-size: 13px; }
+  footer .tip { margin-top: 8px; }
+  footer code { background: var(--panel); border: 1px solid var(--line); border-radius: 7px; padding: 3px 8px; font-size: 12px; }
+  .copy { cursor: pointer; border: 1px solid var(--line); background: var(--panel); color: var(--mut); border-radius: 7px; padding: 3px 8px; font-size: 12px; }
+  .mono { font-family: ui-monospace, monospace; font-size: 12px; color: var(--faint); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1><b>swap</b>check</h1>
+    <span class="tag">the swap that checks the token first</span>
+    <button id="connect" class="connect">Connect wallet</button>
+  </header>
+  <p class="lead">Best route via Jupiter, signed by <em>your</em> wallet — we never touch your funds. The difference: before you buy, swapcheck reads the token's mint on-chain and warns you if the creator can print more or freeze yours.</p>
+
+  <div class="card">
+    <div class="lbl">You pay</div>
+    <div class="trow">
+      <select id="inSel"></select>
+      <input id="inAmt" class="amt" placeholder="0.0" inputmode="decimal" autocomplete="off" />
+    </div>
+    <div class="trow mintrow" id="inMintRow">
+      <input id="inMint" class="mint" placeholder="Paste the mint address of the token you're selling" spellcheck="false" autocomplete="off" />
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="lbl">You receive</div>
+    <div class="trow">
+      <select id="outSel"></select>
+    </div>
+    <div class="trow mintrow" id="outMintRow">
+      <input id="outMint" class="mint" placeholder="Paste the mint address of the token you're buying" spellcheck="false" autocomplete="off" />
+    </div>
+  </div>
+
+  <div class="actions">
+    <button id="quoteBtn" class="primary grow">Get quote &amp; check token</button>
+    <div class="slip">slippage
+      <select id="slip">
+        <option value="50">0.5%</option>
+        <option value="100">1%</option>
+        <option value="300">3%</option>
+      </select>
+    </div>
+  </div>
+
+  <div id="out"></div>
+
+  <footer>
+    <div>Non-custodial: swaps are built by <a href="https://dev.jup.ag/docs/swap-api" target="_blank" rel="noopener">Jupiter's Swap API</a> and signed in your own wallet. swapcheck holds no keys and no funds. A 0.20% platform fee is included in quotes when active. From the same family: <a href="https://arijon13.github.io/txplain/">txplain</a> explains any transaction in plain English, <a href="https://arijon13.github.io/mintcheck/">mintcheck</a> runs deeper token checks.</div>
+    <div class="tip">Useful? Tip the wallet that built it: <code id="tipaddr">qjrAgD1QGyaZuRAz1RB9fFAdU5UPsMDbQGujcXCitr3</code> <button class="copy" id="copytip">copy</button></div>
+  </footer>
+</div>
+
+<script src="https://unpkg.com/@solana/web3.js@1.95.3/lib/index.iife.min.js"></script>
+<script>
+const RPC = "https://solana-rpc.publicnode.com";
+const RPC_FALLBACK = "https://api.mainnet-beta.solana.com";
+const JUP = "https://lite-api.jup.ag/swap/v1";
+const FEE_WALLET = "qjrAgD1QGyaZuRAz1RB9fFAdU5UPsMDbQGujcXCitr3";
+const FEE_BPS = 20;
+const ATA_PROG = "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL";
+const PRESETS = [
+  { sym: "SOL",  mint: "So11111111111111111111111111111111111111112", decimals: 9 },
+  { sym: "USDC", mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", decimals: 6 },
+  { sym: "USDT", mint: "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB", decimals: 6 },
+];
+
+const $ = (id) => document.getElementById(id);
+const short = (s, n = 4) => (s && s.length > 2 * n + 1 ? s.slice(0, n) + "…" + s.slice(-n) : s);
+const isMint = (s) => /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(s);
+let wallet = null;          // connected pubkey (string)
+let lastQuoteParams = null; // params used for the shown quote
+let lastQuote = null;       // quote response object
+let lastFeeAccount = null;  // fee account passed to swap, or null
+let outInfo = null;         // parsed mint info of output token
+let ackRequired = false;
+
+const mintCache = {};       // mint -> { decimals, mintAuthority, freezeAuthority, program }
+
+async function rpc(method, params) {
+  for (const url of [RPC, RPC_FALLBACK]) {
+    try {
+      const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }) });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const j = await res.json();
+      if (j.error) throw new Error(j.error.message || JSON.stringify(j.error));
+      return j.result;
+    } catch (e) {
+      if (url === RPC_FALLBACK) throw e;
+    }
+  }
+}
+
+async function mintInfo(mint) {
+  if (mintCache[mint]) return mintCache[mint];
+  const ai = await rpc("getAccountInfo", [mint, { encoding: "jsonParsed" }]);
+  const val = ai && ai.value;
+  if (!val) throw new Error("No account found for " + short(mint) + " on mainnet.");
+  const parsed = val.data && val.data.parsed;
+  if (!parsed || parsed.type !== "mint") throw new Error(short(mint) + " is not a token mint.");
+  const info = { decimals: parsed.info.decimals, mintAuthority: parsed.info.mintAuthority || null,
+    freezeAuthority: parsed.info.freezeAuthority || null, program: val.owner };
+  mintCache[mint] = info;
+  return info;
+}
+
+function ata(ownerStr, mintStr, tokenProg) {
+  const { PublicKey } = solanaWeb3;
+  const [addr] = PublicKey.findProgramAddressSync(
+    [new PublicKey(ownerStr).toBuffer(), new PublicKey(tokenProg).toBuffer(), new PublicKey(mintStr).toBuffer()],
+    new PublicKey(ATA_PROG));
+  return addr.toBase58();
+}
+
+// Find a fee account that already exists: prefer output-mint ATA, fall back to input-mint ATA.
+async function findFeeAccount(inMint, inProg, outMint, outProg) {
+  const candidates = [ata(FEE_WALLET, outMint, outProg), ata(FEE_WALLET, inMint, inProg)];
+  const res = await rpc("getMultipleAccounts", [candidates, { encoding: "base64", dataSlice: { offset: 0, length: 0 } }]);
+  const vals = (res && res.value) || [];
+  for (let i = 0; i < candidates.length; i++) if (vals[i]) return candidates[i];
+  return null;
+}
+
+function selectedMint(side) {
+  const sel = $(side + "Sel").value;
+  if (sel !== "custom") return sel;
+  const v = $(side + "Mint").value.trim();
+  return isMint(v) ? v : null;
+}
+
+function toRaw(amountStr, decimals) {
+  const s = amountStr.trim();
+  if (!/^\d*\.?\d*$/.test(s) || s === "" || s === ".") return null;
+  const [w, f = ""] = s.split(".");
+  const frac = (f + "0".repeat(decimals)).slice(0, decimals);
+  const raw = BigInt(w || "0") * (10n ** BigInt(decimals)) + BigInt(frac || "0");
+  return raw > 0n ? raw.toString() : null;
+}
+
+function fmtRaw(raw, decimals, maxFrac = 6) {
+  const n = BigInt(raw);
+  const base = 10n ** BigInt(decimals);
+  const whole = n / base, frac = n % base;
+  let fs = frac.toString().padStart(decimals, "0").slice(0, maxFrac).replace(/0+$/, "");
+  return whole.toLocaleString() + (fs ? "." + fs : "");
+}
+
+function symFor(mint) {
+  const p = PRESETS.find((t) => t.mint === mint);
+  return p ? p.sym : short(mint);
+}
+
+function renderFlags(mint, info) {
+  const canMint = !!info.mintAuthority;
+  const canFreeze = !!info.freezeAuthority;
+  ackRequired = canMint || canFreeze;
+  const flag = (risk, t, d) => `<div class="flag ${risk ? "risk" : "ok"}"><div class="dot"></div><div><div class="t">${t}</div><div class="d">${d}</div></div></div>`;
+  let html = `<div class="flags">`;
+  html += flag(canMint,
+    canMint ? "Mint authority is ACTIVE — supply can grow" : "Mint authority revoked — supply is fixed",
+    canMint ? `The holder of <span class="mono">${short(info.mintAuthority)}</span> can print new tokens at any time, diluting you the moment you buy.` : "No one can create new tokens.");
+  html += flag(canFreeze,
+    canFreeze ? "Freeze authority is ACTIVE — your tokens can be frozen" : "Freeze authority revoked — tokens can't be frozen",
+    canFreeze ? `The holder of <span class="mono">${short(info.freezeAuthority)}</span> can freeze your token account, blocking you from ever selling.` : "No one can freeze your tokens.");
+  html += `</div>`;
+  if (ackRequired) {
+    html += `<div class="gate"><label><input type="checkbox" id="ack" />
+      <span>I've read the red flags on <b>${symFor(mint)}</b> and I still want to swap. (A regulated token like USDC keeps these powers on purpose — the question is who you're trusting with them. On an anonymous memecoin, this is how rugs happen.)</span></label></div>`;
+  }
+  html += `<div style="margin-top:8px;font-size:13px;color:var(--faint)">Deeper checks on this token: <a href="https://arijon13.github.io/mintcheck/" target="_blank" rel="noopener">mintcheck</a></div>`;
+  return html;
+}
+
+function updateSwapEnabled() {
+  const btn = $("swapBtn");
+  if (!btn) return;
+  const ackOk = !ackRequired || ($("ack") && $("ack").checked);
+  btn.disabled = !ackOk;
+  btn.textContent = wallet ? "Swap" : "Connect wallet & swap";
+}
+
+async function getQuote() {
+  const inMint = selectedMint("in"), outMint = selectedMint("out");
+  const out = $("out");
+  if (!inMint || !outMint) { out.innerHTML = `<div class="msg err">Pick both tokens (paste a full mint address for custom tokens).</div>`; return; }
+  if (inMint === outMint) { out.innerHTML = `<div class="msg err">You're trying to swap a token for itself.</div>`; return; }
+  $("quoteBtn").disabled = true;
+  out.innerHTML = `<div class="msg">Reading both mints and asking Jupiter for the best route…</div>`;
+  try {
+    const [inInfo, oInfo] = await Promise.all([mintInfo(inMint), mintInfo(outMint)]);
+    outInfo = oInfo;
+    const amount = toRaw($("inAmt").value, inInfo.decimals);
+    if (!amount) { out.innerHTML = `<div class="msg err">Enter a valid amount to sell.</div>`; return; }
+
+    lastFeeAccount = await findFeeAccount(inMint, inInfo.program, outMint, oInfo.program);
+    const slippageBps = $("slip").value;
+    const params = new URLSearchParams({ inputMint: inMint, outputMint: outMint, amount, slippageBps });
+    if (lastFeeAccount) params.set("platformFeeBps", String(FEE_BPS));
+    const res = await fetch(`${JUP}/quote?${params}`);
+    const q = await res.json();
+    if (q.error || !q.outAmount) throw new Error(q.error || "No route found for this pair.");
+    lastQuote = q;
+    lastQuoteParams = { inMint, outMint, amount, slippageBps, inDecimals: inInfo.decimals, outDecimals: oInfo.decimals };
+
+    const feeLine = lastFeeAccount && q.platformFee
+      ? `<div class="k">Platform fee</div><div class="v fee">0.20% (${fmtRaw(q.platformFee.amount, oInfo.decimals)} ${symFor(outMint)})</div>`
+      : `<div class="k">Platform fee</div><div class="v">none on this pair yet</div>`;
+    const impact = parseFloat(q.priceImpactPct || "0");
+    const route = (q.routePlan || []).map((r) => r.swapInfo && r.swapInfo.label).filter(Boolean).join(" → ") || "direct";
+
+    let html = `<div class="card quote">
+      <div class="big">${fmtRaw(q.outAmount, oInfo.decimals)} <small>${symFor(outMint)}</small></div>
+      <div class="kv">
+        <div class="k">Minimum received</div><div class="v">${fmtRaw(q.otherAmountThreshold, oInfo.decimals)} ${symFor(outMint)}</div>
+        <div class="k">Price impact</div><div class="v"${impact > 1 ? ' style="color:var(--amber)"' : ""}>${impact < 0.01 ? "&lt; 0.01" : impact.toFixed(2)}%</div>
+        <div class="k">Route</div><div class="v">${route}</div>
+        ${feeLine}
+      </div>
+    </div>`;
+    html += renderFlags(outMint, oInfo);
+    html += `<div class="swapline"><button id="swapBtn" class="primary">Swap</button></div><div id="swapmsg"></div>`;
+    out.innerHTML = html;
+    if ($("ack")) $("ack").addEventListener("change", updateSwapEnabled);
+    $("swapBtn").addEventListener("click", doSwap);
+    updateSwapEnabled();
+  } catch (e) {
+    out.innerHTML = `<div class="msg err">${e.message}</div>`;
+  } finally {
+    $("quoteBtn").disabled = false;
+  }
+}
+
+function provider() {
+  const p = window.solana || (window.phantom && window.phantom.solana);
+  return p && p.isPhantom !== false ? p : null;
+}
+
+async function connect() {
+  const p = provider();
+  if (!p) {
+    $("out").innerHTML = `<div class="msg err">No Solana wallet found. Install <a href="https://phantom.com" target="_blank" rel="noopener">Phantom</a>, then reload this page.</div>`;
+    return null;
+  }
+  const resp = await p.connect();
+  wallet = resp.publicKey.toString();
+  $("connect").textContent = short(wallet);
+  updateSwapEnabled();
+  return wallet;
+}
+
+async function doSwap() {
+  const msg = $("swapmsg");
+  try {
+    if (!wallet && !(await connect())) return;
+    $("swapBtn").disabled = true;
+    msg.innerHTML = `<div class="msg">Refreshing the quote and building your transaction…</div>`;
+
+    // Fresh quote right before signing so the price is current.
+    const p = lastQuoteParams;
+    const params = new URLSearchParams({ inputMint: p.inMint, outputMint: p.outMint, amount: p.amount, slippageBps: p.slippageBps });
+    if (lastFeeAccount) params.set("platformFeeBps", String(FEE_BPS));
+    const q = await (await fetch(`${JUP}/quote?${params}`)).json();
+    if (q.error || !q.outAmount) throw new Error(q.error || "Route disappeared — try quoting again.");
+
+    const body = { userPublicKey: wallet, quoteResponse: q, wrapAndUnwrapSol: true, dynamicComputeUnitLimit: true };
+    if (lastFeeAccount) body.feeAccount = lastFeeAccount;
+    const sw = await (await fetch(`${JUP}/swap`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })).json();
+    if (!sw.swapTransaction) throw new Error(sw.error || "Jupiter could not build the transaction.");
+
+    const bytes = Uint8Array.from(atob(sw.swapTransaction), (c) => c.charCodeAt(0));
+    const tx = solanaWeb3.VersionedTransaction.deserialize(bytes);
+    msg.innerHTML = `<div class="msg">Waiting for your wallet — check the details there and approve if they match.</div>`;
+    const { signature } = await provider().signAndSendTransaction(tx);
+
+    msg.innerHTML = `<div class="msg">Sent. Waiting for confirmation… <span class="mono">${short(signature, 8)}</span></div>`;
+    let status = null;
+    for (let i = 0; i < 30; i++) {
+      await new Promise((r) => setTimeout(r, 2000));
+      const st = await rpc("getSignatureStatuses", [[signature]]);
+      status = st && st.value && st.value[0];
+      if (status && (status.confirmationStatus === "confirmed" || status.confirmationStatus === "finalized")) break;
+    }
+    if (status && !status.err) {
+      msg.innerHTML = `<div class="msg ok">Swap confirmed. <a href="https://solscan.io/tx/${signature}" target="_blank" rel="noopener">Solscan ↗</a> · <a href="https://arijon13.github.io/txplain/" target="_blank" rel="noopener">paste it into txplain to see what happened ↗</a></div>`;
+    } else if (status && status.err) {
+      msg.innerHTML = `<div class="msg err">Transaction landed but failed on-chain: <span class="mono">${JSON.stringify(status.err)}</span> — your funds only moved if the transaction succeeded. <a href="https://solscan.io/tx/${signature}" target="_blank" rel="noopener">Inspect on Solscan ↗</a></div>`;
+    } else {
+      msg.innerHTML = `<div class="msg">No confirmation yet — the network may be slow. <a href="https://solscan.io/tx/${signature}" target="_blank" rel="noopener">Track it on Solscan ↗</a></div>`;
+    }
+  } catch (e) {
+    const m = (e && e.message) || String(e);
+    msg.innerHTML = `<div class="msg err">${/reject/i.test(m) ? "You declined the transaction in your wallet — nothing was sent." : m}</div>`;
+  } finally {
+    if ($("swapBtn")) { $("swapBtn").disabled = false; updateSwapEnabled(); }
+  }
+}
+
+function fillSelect(sel, side, defaultMint) {
+  for (const t of PRESETS) {
+    const o = document.createElement("option");
+    o.value = t.mint; o.textContent = t.sym;
+    sel.appendChild(o);
+  }
+  const o = document.createElement("option");
+  o.value = "custom"; o.textContent = "other…";
+  sel.appendChild(o);
+  sel.value = defaultMint;
+  sel.addEventListener("change", () => {
+    $(side + "MintRow").classList.toggle("show", sel.value === "custom");
+  });
+}
+
+fillSelect($("inSel"), "in", PRESETS[0].mint);   // default: pay SOL
+fillSelect($("outSel"), "out", "custom");        // default: buy a pasted token
+$("outMintRow").classList.add("show");
+
+$("quoteBtn").addEventListener("click", getQuote);
+$("inAmt").addEventListener("keydown", (e) => { if (e.key === "Enter") getQuote(); });
+$("outMint").addEventListener("keydown", (e) => { if (e.key === "Enter") getQuote(); });
+$("connect").addEventListener("click", connect);
+$("copytip").addEventListener("click", async () => {
+  await navigator.clipboard.writeText($("tipaddr").textContent);
+  $("copytip").textContent = "copied"; setTimeout(() => ($("copytip").textContent = "copy"), 1500);
+});
+</script>
+</body>
+</html>
