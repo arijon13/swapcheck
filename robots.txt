@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://arijon13.github.io/swapcheck/sitemap.xml
